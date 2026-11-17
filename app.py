@@ -155,6 +155,42 @@ def charger_modele():
     )
 
 
+# Modèle multilingue zero-shot : test expérimental, sans règles commerçants.
+@st.cache_resource
+def charger_modele_zero_shot():
+    return pipeline(
+        "zero-shot-classification",
+        model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli"
+    )
+
+
+# Les étiquettes donnent davantage de contexte au modèle zero-shot.
+libelles_zero_shot = {
+    "Épicerie": "achats alimentaires au supermarché ou à l'épicerie",
+    "Restaurants": "repas au restaurant, café ou restauration rapide",
+    "Transport": "essence, transports en commun ou déplacements",
+    "Logement": "loyer, électricité, internet et charges du logement",
+    "Santé": "pharmacie, soins médicaux et santé",
+    "Abonnements": "abonnements et services récurrents de divertissement",
+    "Magasinage": "achats de vêtements, beauté, maison et magasins",
+    "Autres": "autres dépenses et frais bancaires",
+}
+
+
+def categoriser_zero_shot(description, modele):
+    description_ia = nettoyer_description_pour_ia(description)
+    etiquettes = list(libelles_zero_shot.values())
+    resultat = modele(
+        description_ia,
+        candidate_labels=etiquettes,
+        hypothesis_template="Cette transaction concerne {}.",
+        multi_label=False,
+    )
+    etiquette = resultat["labels"][0]
+    categorie = next(cat for cat, libelle in libelles_zero_shot.items() if libelle == etiquette)
+    return categorie, resultat["scores"][0]
+
+
 # On définit les catégories proposées à l'utilisateur.
 categories = [
     "Épicerie",
@@ -270,15 +306,25 @@ if page == "Importer un relevé":
                     f"{total_depenses:.2f} $"
                 )
 
-                # On lance le modèle d'IA.
+                # Sélection du modèle pour comparer les résultats sur le même PDF.
+                choix_modele = st.radio(
+                    "Modèle de catégorisation à tester",
+                    ["Modèle actuel", "Modèle zero-shot (expérimental)"],
+                    horizontal=True,
+                    help="Le zero-shot peut être plus lent au premier chargement.",
+                )
+
+                # On lance uniquement le modèle sélectionné.
                 with st.spinner("L'IA analyse vos dépenses..."):
-                    modele = charger_modele()
+                    if choix_modele == "Modèle actuel":
+                        modele = charger_modele()
+                        fonction_categorisation = categoriser_depense
+                    else:
+                        modele = charger_modele_zero_shot()
+                        fonction_categorisation = categoriser_zero_shot
 
                     resultats_ia = depenses["Description"].apply(
-                        lambda description: categoriser_depense(
-                            description,
-                            modele
-                        )
+                        lambda description: fonction_categorisation(description, modele)
                     )
 
                     depenses["Catégorie"] = resultats_ia.apply(
