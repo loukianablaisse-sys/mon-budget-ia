@@ -174,27 +174,53 @@ correspondances = {
     "Entertainment": "Autres",
     "Shopping": "Magasinage",
     "Subscription": "Abonnements",
+    "Subscriptions": "Abonnements",
     "Restaurants": "Restaurants",
     "Transportation": "Transport",
     "Healthcare": "Santé",
-    "Utilities": "Logement"
+    "Utilities": "Logement",
+    "Groceries": "Épicerie",
+    "Grocery": "Épicerie",
+    "Rent": "Logement",
 }
+
+
+# Cette fonction retire les mentions bancaires génériques avant la classification.
+# La description originale reste inchangée dans le tableau et la base de données.
+def nettoyer_description_pour_ia(description):
+    # On convertit la valeur en texte et on supprime les espaces superflus.
+    texte = re.sub(r"\s+", " ", str(description)).strip()
+
+    # On retire uniquement les préfixes décrivant le moyen de paiement.
+    # Ces mentions n'indiquent généralement pas la nature de l'achat.
+    prefixes = [
+        r"ACHAT\s+INTERAC", r"PAIEMENT\s+INTERAC",
+        r"ACHAT\s+PAR\s+CARTE", r"PAIEMENT\s+PAR\s+CARTE",
+        r"DEBIT\s+INTERAC", r"DEBIT\s+CARTE",
+        r"POS\s+PURCHASE", r"DEBIT\s+PURCHASE",
+        r"CARD\s+PURCHASE", r"PURCHASE",
+    ]
+    motif = r"^(?:(?:" + "|".join(prefixes) + r")\s*[-:]*\s*)+"
+    texte_nettoye = re.sub(motif, "", texte, flags=re.IGNORECASE).strip()
+
+    # Si le nettoyage supprime tout, on conserve la description originale.
+    return texte_nettoye if texte_nettoye else texte
 
 
 # Cette fonction demande à l'IA de catégoriser une dépense.
 def categoriser_depense(description, modele):
+    # Le nettoyage ne change pas la description enregistrée.
+    description_ia = nettoyer_description_pour_ia(description)
 
-    resultat = modele(description)[0]
-
+    # Le modèle pré-entraîné prédit une catégorie et fournit son score.
+    resultat = modele(description_ia)[0]
     categorie_anglaise = resultat["label"]
 
-    categorie_francaise = correspondances.get(
-        categorie_anglaise,
-        "Autres"
-    )
-
+    # On convertit la catégorie anglaise vers les catégories de l'application.
+    categorie_francaise = correspondances.get(categorie_anglaise, "Autres")
     score_confiance = resultat["score"]
 
+    # Le score est conservé dans le résultat, sans seuil de décision.
     return categorie_francaise, score_confiance
 
 if page == "Importer un relevé":
