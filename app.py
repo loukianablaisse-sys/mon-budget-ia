@@ -4,6 +4,7 @@ import pdfplumber
 import pandas as pd
 import re
 import plotly.express as px
+from extraction_pdf import extraire_transactions
 from transformers import pipeline
 from database import (
     enregistrer_depenses,
@@ -218,54 +219,8 @@ if page == "Importer un relevé":
 
         st.success("Votre fichier PDF a bien été importé !")
 
-        texte = ""
-
-        # On extrait le texte du PDF.
-        with pdfplumber.open(fichier) as pdf:
-
-            st.write("Nombre de pages du PDF :", len(pdf.pages))
-
-            # On lit toutes les pages du document.
-            for page_pdf in pdf.pages:
-                texte_page = page_pdf.extract_text()
-
-                if texte_page:
-                    texte += texte_page + "\n"
-
-        if texte:
-            st.success("Du texte a bien été détecté dans le PDF !")
-            st.text_area("Texte extrait", texte, height=250)
-        else:
-            st.warning("Aucun texte détecté dans le PDF.")
-
-        # On prépare la liste des transactions.
-        transactions = []
-
-        for ligne in texte.split("\n"):
-
-            resultat = re.match(
-                r"^(\d{2}/\d{2}/\d{4})\s+(.+?)\s+(-?\d+,\d{2})$",
-                ligne.strip()
-            )
-
-            if resultat:
-
-                date = resultat.group(1)
-                description = resultat.group(2)
-                montant = float(
-                    resultat.group(3).replace(",", ".")
-                )
-
-                transactions.append({
-                    "Date": date,
-                    "Description": description,
-                    "Montant ($)": montant
-                })
-
-        df = pd.DataFrame(
-            transactions,
-            columns=["Date", "Description", "Montant ($)"]
-        )
+        # Extraction des transactions depuis le PDF
+        df = extraire_transactions(fichier)
 
         st.subheader("Transactions extraites du relevé")
         st.dataframe(df, hide_index=True, width="stretch")
@@ -274,9 +229,8 @@ if page == "Importer un relevé":
 
             # Dans notre PDF fictif, les montants négatifs
             # correspondent aux dépenses.
-            depenses = df[df["Montant ($)"] < 0].copy()
+            depenses = df.copy()
 
-            depenses["Montant ($)"] = depenses["Montant ($)"].abs()
 
             if not depenses.empty:
 
